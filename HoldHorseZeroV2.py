@@ -1,8 +1,44 @@
+""" A Monte Carlo Search Tree utilizing Rapid Action Value Estimation
+This code was based on the following publications:
+https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.86.5248&rep=rep1&type=pdf
+https://users.soe.ucsc.edu/~dph/mypubs/AMAFpaperWithRef.pdf
+By Sylvain Gelly", "David Silver", and "David P. Helmbold", "Aleatha Parker-Wood respectively.
+
+This program implements only a fraction of the Monte Carlo Search Tree improvements detailed in published works.
+Originally, I had planned to implement a much more significant portion of the publications, however, while I
+was able to understand the majority of the theory behind these improvements, implementing them proved much more
+difficult than I had imagined. I was particularly interested in implementing value-based reinforcement learning,
+and spent a great deal of time attempting to do so to no avail, and I ultimately gave up after many hours of
+debugging. If you would like to see this additional work, please let me know. Additionally, I have implemented
+a version of the suggested alpha-beta pruning minimax search, and while it is significantly stronger than
+knight_rider, it is no-where near the playing strength of this program. In an 100-game match, this program managed to
+beat dark_knight in 80 out of 120 (66.67%) of matches.
+
+Future improvements I hope to include are:
+leaf node parallelization
+use of transposition table
+
+Updated to use a very basic hand-crafted simulation policy with UCT in-place of the Rave-UTC with a random simulation
+policy. he hand-crafted simulation policy makes the simulation play-outs closer to what you would expect to happen in
+an actual game, thus the results of the simulations are more meaningful and the algorithm performs better. The new
+policy gives higher weights to moves that capture hanging pieces, attack the squares one knight-distance away from the
+apple, move to safe-squares, and capture pieces, additionally, I used the score function from the Rave version to
+compute a piece-square  weights table which is further used to add weights to moves to specific tiles.
+"""
+
 from collections import defaultdict
 from datetime import datetime
 import numpy as np
 import queue as qu
 import math
+import random
+
+__author__ = "Philip DiSarro"
+__credits__ = ["Sylvain Gelly", "David Silver", "David P. Helmbold", "Aleatha Parker-Wood"]
+__version__ = "1.0"
+__maintainer__ = "Philip DiSarro"
+__email__ = "philip.disarro@phabulous.org"
+__status__ = "Production"
 
 
 boardWidth = 0            # These 3 global variables are set by the getMove function. This is not...
@@ -81,19 +117,67 @@ def get_simulation_moves(state):
             if all(state.board[square] != -1 * state.playerToMove for square in mating_squares[state.playerToMove]):
                 if attackers_defenders(state, x[2], x[3]) >= 0:
                     return [x]
-        if attackers_defenders(state, x[2], x[3]) >= 0 and state.board[x[2], x[3]] == -state.playerToMove:
-            return [x]
         if state.board[x[2], x[3]] == -state.playerToMove and (x[2], x[3]) in mating_squares[state.playerToMove]:
             return [x]
         if state.board[x[2], x[3]] == -state.playerToMove:
             atk_moves.append(x)
-        if attackers_defenders(state, x[2], x[3]) >= 0:
-            filtered_moves.append(x)
+            if attackers_defenders(state, x[2], x[3]) >= 0:
+                filtered_moves.append(x)
+        # atk_def = attackers_defenders(state, x[2], x[3])
+        # if state.board[x[2], x[3]] == -state.playerToMove and atk_def >= 0:
+        #     filtered_moves.append(x)
+        # elif atk_def or state.board[x[2], x[3]] == -state.playerToMove:
+        #     atk_moves.append(x)
     # if not filtered_moves:
     #     print("NO GOOD MOVES")
     #     print(moves)
     #     print(state.board)
     return filtered_moves or moves
+
+
+def get_weighted_moves(state):
+    """
+    Get a list of moves as their associated weights to use for the Monte-Carlo Search Tree simulation policy.
+    Weights are calculated as the product of the piece-square table value and certain constants obtained from
+    ML analysis of the boards.
+    :param state:
+    :return:
+    """
+    direction = [(1, -2), (2, -1), (2, 1), (1, 2), (-1, 2), (-2, 1), (-2, -1), (-1, -2)]    # Possible (dx, dy) moves
+    moves = []
+    weights = []
+    for xStart in range(boardWidth):  # Search board for player's pieces
+        for yStart in range(boardHeight):
+            if state.board[xStart, yStart] == state.playerToMove:  # Found a piece!
+                for (dx, dy) in direction:  # Check all potential move vectors
+                    (xEnd, yEnd) = (xStart + dx, yStart + dy)
+                    if xEnd >= 0 and xEnd < boardWidth and yEnd >= 0 and yEnd < boardHeight and not (state.board[xEnd, yEnd] in [state.playerToMove, 2 * state.playerToMove]):
+                        if state.board[xEnd, yEnd] == state.playerToMove * -2:
+                            return [(xStart, yStart, xEnd, yEnd)], False
+                        elif (xEnd, yEnd) in mating_squares[-state.playerToMove] and all(state.board[square] != -1 * state.playerToMove for square in mating_squares[state.playerToMove]) and attackers_defenders(state, xEnd, yEnd) >= 0:
+                            return [(xStart, yStart, xEnd, yEnd)], False
+                        elif state.board[xEnd, yEnd] == -state.playerToMove and (xEnd, yEnd) in mating_squares[state.playerToMove]:
+                            return [(xStart, yStart, xEnd, yEnd)], False
+                        elif attackers_defenders(state, xEnd, yEnd) >= 0:
+                            if state.board[xEnd, yEnd] == -state.playerToMove:
+                                #tile_pts = tile_value[state.playerToMove][xEnd, yEnd] if tile_value[state.playerToMove][xEnd, yEnd] > tile_value[state.playerToMove][xStart, yStart] else 1
+                                tile_pts = tile_value[state.playerToMove][xEnd, yEnd]
+                                weights.append(tile_pts * 50)
+                            else:
+                                tile_pts = tile_value[state.playerToMove][xEnd, yEnd]
+                                #tile_pts = tile_value[state.playerToMove][xEnd, yEnd] if tile_value[state.playerToMove][xEnd, yEnd] > tile_value[state.playerToMove][xStart, yStart] else 1
+                                weights.append(tile_pts * 3)
+                        elif state.board[xEnd, yEnd] == -state.playerToMove:
+                            tile_pts = tile_value[state.playerToMove][xEnd, yEnd]
+                            #tile_pts = tile_value[state.playerToMove][xEnd, yEnd] if tile_value[state.playerToMove][xEnd, yEnd] > tile_value[state.playerToMove][xStart, yStart] else 1
+                            weights.append(tile_pts * 2)
+                        else:
+                            tile_pts = tile_value[state.playerToMove][xEnd, yEnd]
+                            # tile_pts = tile_value[state.playerToMove][xEnd, yEnd] if tile_value[state.playerToMove][xEnd, yEnd] > tile_value[state.playerToMove][xStart, yStart] else 1
+                            weights.append(1 * tile_pts)
+                        moves.append((xStart, yStart, xEnd, yEnd))
+    return moves, weights
+
 
 # def get_simulation_moves(state):
 #     moves = getMoveOptions(state)
@@ -162,8 +246,6 @@ class HorseHoldSearchNode:
         if not hasattr(self, '_moves_to_try'):
             #self._moves_to_try = getMoveOptions(self.state)
             self._moves_to_try = get_simulation_moves(self.state)
-            if not self._moves_to_try:
-                self._moves_to_try = getMoveOptions(self.state)
         return self._moves_to_try
 
     def num_visits(self):
@@ -186,11 +268,12 @@ class HorseHoldSearchNode:
     def simulation(self):
         current_simulation = self.state
         while not current_simulation.gameOver:
-            #possible_moves = getMoveOptions(current_simulation)
-            possible_moves = get_simulation_moves(current_simulation)
-            # Complete one random playout by choosing uniform random moves until the game is decided
-            move = possible_moves[np.random.randint(len(possible_moves))]
-            current_simulation = makeMove(current_simulation, move)
+            possible_moves = get_weighted_moves(current_simulation)
+            if possible_moves[1]:
+                action = self.simulation_move_policy(possible_moves)
+            else:
+                action = possible_moves[0][0]
+            current_simulation = makeMove(current_simulation, action)
         return current_simulation.winner
 
     def backpropagation(self, outcome):
@@ -218,6 +301,15 @@ class HorseHoldSearchNode:
                 best = child
         return best
 
+    @staticmethod
+    def simulation_move_policy(possible_moves):
+        """
+        This policy is based on the premise that moves to higher value squares (as defined by the piece-square tables)
+        should have a higher likelihood to be chosen in the simulations.
+        :return:
+        """
+        return random.choices(possible_moves[0], weights=possible_moves[1], k=1)[0]
+
 
 def time_out():
     duration = datetime.now() - startTime
@@ -236,7 +328,7 @@ class HorseHoldSearchTree:
             if _ % 200 == 0:
                 best = self.root.best_child(exploration_param=0)
             if time_out():
-                print("HorseHoldZeroTree TimeOut at simulation :", _)
+                #print("HorseHoldZeroTreeV2 TimeOut at simulation :", _)
                 return best
         # for child in self.root.children:
         #     print(child.state.curr_move, " = ", child.score)
@@ -245,7 +337,7 @@ class HorseHoldSearchTree:
         best = self.root.best_child(exploration_param=0)
         #end_t = datetime.now()
         #print("Time taken: ", end_t-start_t)
-        print("HorseHoldZeroTree BEST MOVE: ", best.state.curr_move, " Score: ", best.score)
+       # print("HorseHoldZeroTree BEST MOVE: ", best.state.curr_move, " Score: ", best.score)
 
         if queue:
             queue.put(best)
@@ -265,7 +357,7 @@ class HorseHoldSearchTree:
 
 # Set global variables and initialize any data structures that the player will need
 def initPlayer(_startState, _timeLimit, _victoryPoints, _moveLimit, _assignedPlayer):
-    global startState, timeLimit, victoryPoints, moveLimit, assignedPlayer, boardWidth, boardHeight, apple_loc, mating_squares
+    global startState, timeLimit, victoryPoints, moveLimit, assignedPlayer, boardWidth, boardHeight, apple_loc, mating_squares, tile_value
     startState, timeLimit, victoryPoints, moveLimit, assignedPlayer = _startState, _timeLimit, _victoryPoints, _moveLimit, _assignedPlayer
     (boardWidth, boardHeight) = startState.board.shape
     p1_apple_loc = p1_apple(startState)
@@ -287,6 +379,25 @@ def initPlayer(_startState, _timeLimit, _victoryPoints, _moveLimit, _assignedPla
 
     mating_squares = {1: p1_mating_squares, -1: p2_mating_squares}
 
+    # Piece-Square Policy Values: https://www.chessprogramming.org/Piece-Square_Tables
+    p1_tile_values_scaled = np.array([[0, 1, 1.5, 1.2, 1.4, 0],
+                                      [1, 1.3, 1.5, 1.6, 1.2, 1.2],
+                                      [1.5, 1.5, 1.5, 1.7, 1.6, 1.5],
+                                      [1.2, 1.6, 1.7, 1.7, 1.6, 1.3],
+                                      [1.5, 1.6, 1.7, 1.4, 1.9, 1.5],
+                                      [1, 1.3, 1.6, 1.9, 1.2, 1.2],
+                                      [1, 1.4, 1.3, 1.5, 1.2, 0]])
+
+    p2_tile_values_scaled = np.array([[0., 1.2, 1.5, 1.3, 1.4, 1.],
+                                      [1.2, 1.2, 1.9, 1.6, 1.3, 1.],
+                                      [1.5, 1.9, 1.4, 1.7, 1.6, 1.5],
+                                      [1.3, 1.6, 1.7, 1.7, 1.6, 1.2],
+                                      [1.5, 1.6, 1.7, 1.5, 1.5, 1.5],
+                                      [1.2, 1.2, 1.6, 1.5, 1.3, 1.],
+                                      [0., 1.4, 1.2, 1.5, 1., 0.]])
+
+    tile_value = {1: p1_tile_values_scaled, -1: p2_tile_values_scaled}
+
 
 def exitPlayer():
     return
@@ -304,4 +415,10 @@ def getMove(state):
     hhst = HorseHoldSearchTree(root)
     best_node = hhst.best_action(2000)
     #print(best_node.state.board)
+    #print(best_node.score)
+    if best_node.score > 0.8 or best_node.score < -0.8:
+        with open("results.txt", "a+") as results:
+            results.write(str(best_node.state.board))
+            results.write("\n")
+            results.write(str(best_node.state.playerToMove))
     return best_node.state.curr_move

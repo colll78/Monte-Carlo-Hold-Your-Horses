@@ -1,4 +1,5 @@
 import numpy as np
+import random
 from timeit import default_timer as timer
 
 class GameState(object):
@@ -7,7 +8,10 @@ class GameState(object):
 # TODO: modify filter_possible_moves to return
 #  moves that sacrifice pieces if it results in a winning sequence
 
-
+def simulation_move_policy(possible_moves):
+    move = random.choices(possible_moves, cum_weights=(5, 15, 30, 50), k=1)
+    # or alternatively
+    move = np.random.choice(possible_moves, 1, p=[0.1, 0.6, 0.3])
 
 
 #This neural network takes the board position as input and outputs position evaluation (QValue) and a vector of move probabilities (PValue, policy).

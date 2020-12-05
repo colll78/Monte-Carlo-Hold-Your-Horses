@@ -21,7 +21,8 @@ use of transposition table
 """
 
 from collections import defaultdict
-from datetime import datetime
+import concurrent.futures
+from datetime import datetime, timedelta
 import numpy as np
 import queue as qu
 import math
@@ -34,29 +35,30 @@ __email__ = "philip.disarro@phabulous.org"
 __status__ = "Production"
 
 
-boardWidth = 0            # These 3 global variables are set by the getMove function. This is not...
-boardHeight = 0           # ... an elegant solution but an efficient one.
-timeLimit = 0.0           # Maximum thinking time (in seconds) for each move
+boardWidth = 7            # These 3 global variables are set by the getMove function. This is not...
+boardHeight = 6           # ... an elegant solution but an efficient one.
+timeLimit = 2.0           # Maximum thinking time (in seconds) for each move
 
 startState = None         # Initial state, provided to the initPlayer function
-assignedPlayer = 0        # 1 -> player MAX; -1 -> player MIN (in terms of the MiniMax algorithm)
+assignedPlayer = 1        # 1 -> player MAX; -1 -> player MIN (in terms of the MiniMax algorithm)
 startTime = 0
 
-victoryPoints = 0       # Number of points for the winner
-moveLimit = 0           # Maximum number of moves
+victoryPoints = 0         # Number of points for the winner
+moveLimit = 0             # Maximum number of moves
                           # If exceeded, game is a tie; otherwise, number of remaining moves is added to winner's score.
 
-pointMultiplier = 10      # Muliplier for winner's points in getScore function
-pieceValue = 20           # Score value of a single piece in getScore function
-victoryScoreThresh = 1000 # An absolute score exceeds this value if and only if one player has won
-minLookAhead = 1          # Initial search depth for iterative deepening
+pointMultiplier = 10       # Muliplier for winner's points in getScore function
+pieceValue = 20            # Score value of a single piece in getScore function
+victoryScoreThresh = 1000  # An absolute score exceeds this value if and only if one player has won
+minLookAhead = 1           # Initial search depth for iterative deepening
 maxLookAhead = 20          # Maximum search depth
 apple_loc = None
-mating_squares = None
-reachable = None
+mating_squares = {1: [(2, 1), (1, 2)], -1: [(4, 4), (5, 3)]}
+reachable = {(0, 0): [(2, 1), (1, 2)], (0, 1): [(2, 0), (2, 2), (1, 3)], (0, 2): [(1, 0), (2, 1), (2, 3), (1, 4)], (0, 3): [(1, 1), (2, 2), (2, 4), (1, 5)], (0, 4): [(1, 2), (2, 3), (2, 5)], (0, 5): [(1, 3), (2, 4)], (1, 0): [(3, 1), (2, 2), (0, 2)], (1, 1): [(3, 0), (3, 2), (2, 3), (0, 3)], (1, 2): [(2, 0), (3, 1), (3, 3), (2, 4), (0, 4), (0, 0)], (1, 3): [(2, 1), (3, 2), (3, 4), (2, 5), (0, 5), (0, 1)], (1, 4): [(2, 2), (3, 3), (3, 5), (0, 2)], (1, 5): [(2, 3), (3, 4), (0, 3)], (2, 0): [(4, 1), (3, 2), (1, 2), (0, 1)], (2, 1): [(4, 0), (4, 2), (3, 3), (1, 3), (0, 2), (0, 0)], (2, 2): [(3, 0), (4, 1), (4, 3), (3, 4), (1, 4), (0, 3), (0, 1), (1, 0)], (2, 3): [(3, 1), (4, 2), (4, 4), (3, 5), (1, 5), (0, 4), (0, 2), (1, 1)], (2, 4): [(3, 2), (4, 3), (4, 5), (0, 5), (0, 3), (1, 2)], (2, 5): [(3, 3), (4, 4), (0, 4), (1, 3)], (3, 0): [(5, 1), (4, 2), (2, 2), (1, 1)], (3, 1): [(5, 0), (5, 2), (4, 3), (2, 3), (1, 2), (1, 0)], (3, 2): [(4, 0), (5, 1), (5, 3), (4, 4), (2, 4), (1, 3), (1, 1), (2, 0)], (3, 3): [(4, 1), (5, 2), (5, 4), (4, 5), (2, 5), (1, 4), (1, 2), (2, 1)], (3, 4): [(4, 2), (5, 3), (5, 5), (1, 5), (1, 3), (2, 2)], (3, 5): [(4, 3), (5, 4), (1, 4), (2, 3)], (4, 0): [(6, 1), (5, 2), (3, 2), (2, 1)], (4, 1): [(6, 0), (6, 2), (5, 3), (3, 3), (2, 2), (2, 0)], (4, 2): [(5, 0), (6, 1), (6, 3), (5, 4), (3, 4), (2, 3), (2, 1), (3, 0)], (4, 3): [(5, 1), (6, 2), (6, 4), (5, 5), (3, 5), (2, 4), (2, 2), (3, 1)], (4, 4): [(5, 2), (6, 3), (6, 5), (2, 5), (2, 3), (3, 2)], (4, 5): [(5, 3), (6, 4), (2, 4), (3, 3)], (5, 0): [(6, 2), (4, 2), (3, 1)], (5, 1): [(6, 3), (4, 3), (3, 2), (3, 0)], (5, 2): [(6, 0), (6, 4), (4, 4), (3, 3), (3, 1), (4, 0)], (5, 3): [(6, 1), (6, 5), (4, 5), (3, 4), (3, 2), (4, 1)], (5, 4): [(6, 2), (3, 5), (3, 3), (4, 2)], (5, 5): [(6, 3), (3, 4), (4, 3)], (6, 0): [(5, 2), (4, 1)], (6, 1): [(5, 3), (4, 2), (4, 0)], (6, 2): [(5, 4), (4, 3), (4, 1), (5, 0)], (6, 3): [(5, 5), (4, 4), (4, 2), (5, 1)], (6, 4): [(4, 5), (4, 3), (5, 2)], (6, 5): [(4, 4), (5, 3)]}
 knight_distance = {}
 tile_value = {}
-
+executor = None
+guard_tiles = {1: {(3, 1), (0, 2), (3, 3), (4, 0), (1, 3), (2, 0), (2, 4), (0, 4), (4, 2)}, -1: {(3, 2), (4, 1), (2, 3), (6, 1), (4, 5), (2, 5), (6, 3), (3, 4), (5, 2)}}
 
 class GameState(object):
     __slots__ = ['board', 'playerToMove', 'gameOver', 'movesRemaining', 'points', 'winner', 'curr_move']
@@ -81,6 +83,7 @@ def getMoveOptions(state):
     moves = []
     for xStart in range(boardWidth):                                    # Search board for player's pieces
         for yStart in range(boardHeight):
+            # print("PLAYER TO MOVE", state.playerToMove)
             if state.board[xStart, yStart] == state.playerToMove:       # Found a piece!
                 for (dx, dy) in direction:                              # Check all potential move vectors
                     (xEnd, yEnd) = (xStart + dx, yStart + dy)
@@ -117,6 +120,7 @@ def get_weighted_moves(state):
 
 def get_simulation_moves(state):
     moves = getMoveOptions(state)
+    remove_guard = True
     filtered_moves = []
     atk_moves = []
     for x in moves:
@@ -124,21 +128,36 @@ def get_simulation_moves(state):
             return [x]
         elif (x[2], x[3]) in mating_squares[-state.playerToMove]:
             if all(state.board[square] != -1 * state.playerToMove for square in mating_squares[state.playerToMove]):
-                if attackers_defenders(state, x[2], x[3]) >= 0:
+                atk_def = attackers_defenders(state, x[2], x[3])
+                if atk_def >= 0:
                     return [x]
+                # elif remove_guard and atk_def == -1:
+                #     remove_guard = False
+                #     for tile in guard_tiles[-state.playerToMove]:
+                #         if state.board[tile[0], tile[1]] == -state.playerToMove:
+                #             for rtile in reachable[(tile[0], tile[1])]:
+                #                 if state.board[rtile[0], rtile[1]] == state.playerToMove:
+                #                     # print(state.board)
+                #                     # print((rtile[0], rtile[1], tile[0], tile[1]))
+                #                     return [(rtile[0], rtile[1], tile[0], tile[1])]
         elif (x[2], x[3]) in mating_squares[state.playerToMove] and state.board[x[2], x[3]] == -state.playerToMove:
             return [x]
+        # elif (x[0], x[1]) in guard_tiles[state.playerToMove]:
+        #     for tile in mating_squares[state.playerToMove]:
+        #         atk_def = attackers_defenders(state, tile[0], tile[1])
+        #         if atk_def <= -1:
+        #             continue
         # if attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
         #     filtered_moves.append(x)
-        if state.board[x[2], x[3]] == -state.playerToMove and attackers_defenders(state, x[2], x[3]) >= 0:
+        if state.board[x[2], x[3]] == -state.playerToMove or attackers_defenders(state, x[2], x[3]) >= 0:
             filtered_moves.append(x)
-        elif attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
-            atk_moves.append(x)
+        # elif attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
+        #     atk_moves.append(x)
     # if not filtered_moves:
     #     print("NO GOOD MOVES")
     #     print(moves)
     #     print(state.board)
-    return filtered_moves or atk_moves or moves
+    return filtered_moves or moves
 
 
 # def get_simulation_moves(state):
@@ -266,6 +285,20 @@ class HorseHoldRaveSearchNode():
                     child._n_sims_with_move += 1
             self.parent.backpropagate(simulation_result)
 
+    def get_child_weights(self, exploration_c=exploration_constant):
+        def decaying_weight(child_node):
+            return child_node.num_simulations_containing_move / (child_node.num_visits + child_node.num_simulations_containing_move + 4 * rave_constant ** 2 * child_node.num_visits * child_node.num_simulations_containing_move)
+
+        choices_weights = []
+        for c in self.children:
+            decaying_w = decaying_weight(c)
+            if decaying_w:
+                weight = (1 - decaying_w) * (c.node_score / c.num_visits) + decaying_w * (c.move_win_count / c.num_simulations_containing_move) + exploration_c * np.sqrt((2 * np.log(self.num_visits) / c.num_visits))
+            else:
+                weight = c.node_score / c.num_visits + exploration_c * np.sqrt((2 * np.log(self.num_visits) / c.num_visits))
+            choices_weights.append(weight)
+        return choices_weights
+
     def best_child(self, exploration_c=exploration_constant):
         """
         Rapid Action Value Estimation should be used heavily initially, however, the more times a node is visited,
@@ -296,12 +329,38 @@ def time_out():
     return duration.seconds + duration.microseconds * 1e-6 >= timeLimit
 
 
+def time_out_close():
+    duration = datetime.now() - (startTime - timedelta(milliseconds=50))
+    return duration.seconds + duration.microseconds * 1e-6 >= timeLimit
+
+
+from queue import Queue
+
+
 class HorseHoldSearchTree:
     def __init__(self, node: HorseHoldRaveSearchNode):
         self.root = node
 
+    def multi_threaded_best_action(self, num_simulations=2000):
+        # TODO: store results in queue so that the search can be parallelize
+        # for _ in range(0, 100):
+        #     c = self.expansion()
+        #     points = c.run_simulation()
+        #     c.backpropagate(points)
+        # weights = self.root.get_child_weights(exploration_c=0)
+        #i = 0
+        while not time_out_close():
+            #i+= 1
+            c = self.expansion()
+            points = c.run_simulation()
+            c.backpropagate(points)
+
+        #print("Number of simulations: ", i)
+        weights = self.root.get_child_weights(exploration_c=0)
+        return weights
+
     def best_action(self, num_simulations=2000, queue=None):
-        # TODO: store results in queue so that the search can be parallelized
+        # TODO: store results in queue so that the search can be parallelize
         for _ in range(0, 400):
             c = self.expansion()
             points = c.run_simulation()
@@ -315,7 +374,7 @@ class HorseHoldSearchTree:
             if _ % 100 == 0:
                 best = self.root.best_child(exploration_c=0)
             if _ % 20 == 0 and time_out():
-                #print("HoldHorsesRave TimeOut at simulation :", _)
+                print("ParallelRave TimeOut at simulation :", _)
                 return best
         best = self.root.best_child(exploration_c=0)
         return best
@@ -366,7 +425,7 @@ def around(x, y):
 
 # Set global variables and initialize any data structures that the player will need
 def initPlayer(_startState, _timeLimit, _victoryPoints, _moveLimit, _assignedPlayer):
-    global startState, timeLimit, victoryPoints, moveLimit, assignedPlayer, boardWidth, boardHeight, apple_loc, mating_squares, knight_distance, reachable, tile_value
+    global startState, timeLimit, victoryPoints, moveLimit, assignedPlayer, boardWidth, boardHeight, apple_loc, mating_squares, knight_distance, reachable, tile_value, executor, guard_tiles
     startState, timeLimit, victoryPoints, moveLimit, assignedPlayer = _startState, _timeLimit, _victoryPoints, _moveLimit, _assignedPlayer
     (boardWidth, boardHeight) = startState.board.shape
     p1_apple_loc = p1_apple(startState)
@@ -381,11 +440,29 @@ def initPlayer(_startState, _timeLimit, _victoryPoints, _moveLimit, _assignedPla
         if xEnd >= 0 and xEnd < boardWidth and yEnd >= 0 and yEnd < boardHeight:
             p1_mating_squares.append((xEnd, yEnd))
 
+    p1_guard_tiles = set()
+    for tile in p1_mating_squares:
+        for (dx, dy) in direction:
+            (xEnd, yEnd) = (tile[0] + dx, tile[1] + dy)
+            if xEnd >= 0 and xEnd < boardWidth and yEnd >= 0 and yEnd < boardHeight and startState.board[
+                xEnd, yEnd] != 2:
+                p1_guard_tiles.add((xEnd, yEnd))
+
     p2_mating_squares = []
     for (dx, dy) in direction:
         (xEnd, yEnd) = (p2_apple_loc[0] + dx, p2_apple_loc[1] + dy)
         if xEnd >= 0 and xEnd < boardWidth and yEnd >= 0 and yEnd < boardHeight:
             p2_mating_squares.append((xEnd, yEnd))
+
+    p2_guard_tiles = set()
+    for tile in p2_mating_squares:
+        for (dx, dy) in direction:
+            (xEnd, yEnd) = (tile[0] + dx, tile[1] + dy)
+            if xEnd >= 0 and xEnd < boardWidth and yEnd >= 0 and yEnd < boardHeight and startState.board[
+                xEnd, yEnd] != -2:
+                p2_guard_tiles.add((xEnd, yEnd))
+
+    guard_tiles = {1: p1_guard_tiles, -1: p2_guard_tiles}
 
     mating_squares = {1: p1_mating_squares, -1: p2_mating_squares}
 
@@ -397,27 +474,102 @@ def initPlayer(_startState, _timeLimit, _victoryPoints, _moveLimit, _assignedPla
                 knight_distance[(x, y, 1)] = knight_dist(x, y, p1_apple_loc[0], p1_apple_loc[1])
                 knight_distance[(x, y, -1)] = knight_dist(x, y, p2_apple_loc[0], p2_apple_loc[1])
 
-    piece_square_table_policy = np.array([[0, 1.61803399,  8.09016994,  3.23606798,  6.47213595,  0.],
-                                          [1.61803399,  4.85410197,  8.09016994,  9.70820393,  3.23606798,  3.23606798],
-                                          [8.09016994,  8.09016994,  8.09016994, 11.32623792,  9.70820393,  8.09016994],
-                                          [3.23606798,  9.70820393, 11.32623792, 11.32623792,  9.70820393,  4.85410197],
-                                          [8.09016994,  9.70820393, 11.32623792,  6.47213595, 14.5623059,  8.09016994],
-                                          [1.61803399,  4.85410197, 9.70820393,   14.5623059,   3.23606798,  3.23606798],
-                                          [1.61803399,  6.47213595,  4.85410197,  8.09016994,  3.23606798,  0.]])
-    tile_value = {0: piece_square_table_policy}
+    # Piece-Square Policy Values: https://www.chessprogramming.org/Piece-Square_Tables
+    p1_tile_values_scaled = np.array([[0, 1, 1.5, 1.2, 1.4, 0],
+                                      [1, 1.3, 1.5, 1.6, 1.2, 1.2],
+                                      [1.5, 1.5, 1.5, 1.7, 1.6, 1.5],
+                                      [1.2, 1.6, 1.7, 1.7, 1.6, 1.3],
+                                      [1.5, 1.6, 1.7, 1.4, 1.9, 1.5],
+                                      [1, 1.3, 1.6, 1.9, 1.2, 1.2],
+                                      [1, 1.4, 1.3, 1.5, 1.2, 0]])
+
+    p2_tile_values_scaled = np.array([[0., 1.2, 1.5, 1.3, 1.4, 1.],
+                                      [1.2, 1.2, 1.9, 1.6, 1.3, 1.],
+                                      [1.5, 1.9, 1.4, 1.7, 1.6, 1.5],
+                                      [1.3, 1.6, 1.7, 1.7, 1.6, 1.2],
+                                      [1.5, 1.6, 1.7, 1.5, 1.5, 1.5],
+                                      [1.2, 1.2, 1.6, 1.5, 1.3, 1.],
+                                      [0., 1.4, 1.2, 1.5, 1., 0.]])
+
+    tile_value = {1: p1_tile_values_scaled, -1: p2_tile_values_scaled}
+    #executor = concurrent.futures.ProcessPoolExecutor(6)
 
 
 def exitPlayer():
     return
 
 
+def maux(hhst, time=None):
+    global startTime
+    startTime = time
+    return hhst.multi_threaded_best_action(2000)
+
+
+from timeit import default_timer as timer
+
+
+def multi_thread_best_action(state, num_simulations=2000, queue=None):
+    if(len(np.where(state.board == 1)[0])) < 5:
+        roots = [HorseHoldRaveSearchNode(state=state, parent=None),
+                 HorseHoldRaveSearchNode(state=state, parent=None),
+                 HorseHoldRaveSearchNode(state=state, parent=None),
+                 HorseHoldRaveSearchNode(state=state, parent=None),
+                 HorseHoldRaveSearchNode(state=state, parent=None),
+                 HorseHoldRaveSearchNode(state=state, parent=None)]
+        hhst = [HorseHoldSearchTree(roots[0]),
+                HorseHoldSearchTree(roots[1]),
+                HorseHoldSearchTree(roots[2]),
+                HorseHoldSearchTree(roots[3]),
+                HorseHoldSearchTree(roots[4]),
+                HorseHoldSearchTree(roots[5])]
+    else:
+        roots = [HorseHoldRaveSearchNode(state=state, parent=None),
+                 HorseHoldRaveSearchNode(state=state, parent=None),
+                 HorseHoldRaveSearchNode(state=state, parent=None),
+                 HorseHoldRaveSearchNode(state=state, parent=None)]
+        hhst = [HorseHoldSearchTree(roots[0]),
+                HorseHoldSearchTree(roots[1]),
+                HorseHoldSearchTree(roots[2]),
+                HorseHoldSearchTree(roots[3])]
+
+    children = []
+    for move in reversed(get_simulation_moves(state)):
+        next_state = makeMove(state, move)
+        children.append(HorseHoldRaveSearchNode(next_state, parent=None, move=move))
+
+    # print(children)
+    # print("Num children: ", len(children))
+    start = timer()
+    startTime = datetime.now()
+    exec = concurrent.futures.ProcessPoolExecutor(12)
+    futures = [exec.submit(maux, x, startTime) for x in hhst]
+    results = concurrent.futures.wait(futures)
+    futures = [x.result() for x in results[0]]
+    weights = np.array(futures).sum(axis=0)
+    end = timer()
+    #print("Time taken: ", (end-start))
+    print("Best Score: ", max(weights)/len(hhst))
+    if (max(weights)/len(hhst) > 0.90):
+        with open("game_file.txt", "w+") as game_file:
+            game_file.write(str(state.board))
+            game_file.write("\n")
+
+    return children[np.argmax(weights)]
+
+
 def getMove(state):
     global startTime
     startTime = datetime.now()
     queue = qu.Queue()
-    root = HorseHoldRaveSearchNode(state=state, parent=None)
-    #root.expand()
-    hhst = HorseHoldSearchTree(root)
-    best_node = hhst.best_action(2000)
+    # with concurrent.futures.ProcessPoolExecutor(2) as executor:
+    #     root = HorseHoldRaveSearchNode(state=state, parent=None)
+    #     hhst = HorseHoldSearchTree(root)
+    #     futures = [executor.submit(hhst.best_action) for i in range(0, 2)]
+    #     concurrent.futures.wait(futures)
+    #     print(futures)
+    best_node = multi_thread_best_action(state, 2000)
     #print(best_node.state.board)
+    # with open("game_file.txt", "w+") as game_file:
+    #     game_file.write(str(state.board))
+    #     game_file.write("\n")
     return best_node.state.curr_move

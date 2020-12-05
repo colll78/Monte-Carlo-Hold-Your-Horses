@@ -21,6 +21,7 @@ use of transposition table
 """
 
 from collections import defaultdict
+import random
 from datetime import datetime
 import numpy as np
 import queue as qu
@@ -105,55 +106,51 @@ def attackers_defenders(state, x, y):
 def get_weighted_moves(state):
     direction = [(1, -2), (2, -1), (2, 1), (1, 2), (-1, 2), (-2, 1), (-2, -1), (-1, -2)]    # Possible (dx, dy) moves
     moves = []
-    for xStart in range(boardWidth):                                    # Search board for player's pieces
+    weights = []
+    for xStart in range(boardWidth):  # Search board for player's pieces
         for yStart in range(boardHeight):
-            if state.board[xStart, yStart] == state.playerToMove:       # Found a piece!
-                for (dx, dy) in direction:                              # Check all potential move vectors
+            if state.board[xStart, yStart] == state.playerToMove:  # Found a piece!
+                for (dx, dy) in direction:  # Check all potential move vectors
                     (xEnd, yEnd) = (xStart + dx, yStart + dy)
                     if xEnd >= 0 and xEnd < boardWidth and yEnd >= 0 and yEnd < boardHeight and not (state.board[xEnd, yEnd] in [state.playerToMove, 2 * state.playerToMove]):
-                        moves.append((xStart, yStart, xEnd, yEnd))      # If square is empty or occupied by the opponent, then we have a legal move.
-    return moves
+                        if state.board[xEnd, yEnd] == state.playerToMove * -2:
+                            return [(xStart, yStart, xEnd, yEnd)], False
+                        elif (xEnd, yEnd) in mating_squares[-state.playerToMove] and all(state.board[square] != -1 * state.playerToMove for square in mating_squares[state.playerToMove]) and attackers_defenders(state, xEnd, yEnd) >= 0:
+                            return [(xStart, yStart, xEnd, yEnd)], False
+                        elif (xEnd, yEnd) in mating_squares[state.playerToMove] and state.board[xEnd, yEnd] == -state.playerToMove:
+                            return [(xStart, yStart, xEnd, yEnd)], False
+                        if state.board[xEnd, yEnd] == -state.playerToMove and (xEnd, yEnd) in mating_squares[state.playerToMove]:
+                            return [(xStart, yStart, xEnd, yEnd)], False
+                        atk_def = attackers_defenders(state, xEnd, yEnd)
+                        if atk_def >= 0 and state.board[xEnd, yEnd] == -state.playerToMove:
+                            weights.append(tile_value[state.playerToMove][xEnd, yEnd]*20)
+                        elif atk_def >= 0 or state.board[xEnd, yEnd] == -state.playerToMove:
+                            weights.append(tile_value[state.playerToMove][xEnd, yEnd]*5)
+                        else:
+                            weights.append(tile_value[state.playerToMove][xEnd, yEnd])
+                        moves.append((xStart, yStart, xEnd, yEnd))
+    return moves, weights
 
 
 def get_simulation_moves(state):
     moves = getMoveOptions(state)
     filtered_moves = []
-    atk_moves = []
     for x in moves:
         if state.board[x[2], x[3]] == state.playerToMove * -2:
             return [x]
-        elif (x[2], x[3]) in mating_squares[-state.playerToMove]:
+        if (x[2], x[3]) in mating_squares[-state.playerToMove]:
             if all(state.board[square] != -1 * state.playerToMove for square in mating_squares[state.playerToMove]):
                 if attackers_defenders(state, x[2], x[3]) >= 0:
                     return [x]
-        elif (x[2], x[3]) in mating_squares[state.playerToMove] and state.board[x[2], x[3]] == -state.playerToMove:
+        if state.board[x[2], x[3]] == -state.playerToMove and (x[2], x[3]) in mating_squares[state.playerToMove]:
             return [x]
-        # if attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
-        #     filtered_moves.append(x)
-        if state.board[x[2], x[3]] == -state.playerToMove and attackers_defenders(state, x[2], x[3]) >= 0:
+        if attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
             filtered_moves.append(x)
-        elif attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
-            atk_moves.append(x)
     # if not filtered_moves:
     #     print("NO GOOD MOVES")
     #     print(moves)
     #     print(state.board)
-    return filtered_moves or atk_moves or moves
-
-
-# def get_simulation_moves(state):
-#     moves = getMoveOptions(state)
-#     filtered_moves = []
-#     for x in moves:
-#         if state.board[x[2], x[3]] == state.playerToMove * -2:
-#             return [x]
-#         if (x[2], x[3]) in mating_squares[-state.playerToMove]:
-#             if all(state.board[square] != -1 * state.playerToMove for square in mating_squares[state.playerToMove]):
-#                 if attackers_defenders(state, x[2], x[3]) >= 0:
-#                     return [x]
-#         if attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
-#             filtered_moves.append(x)
-#     return filtered_moves or moves
+    return filtered_moves or moves
 
 
 def makeMove(state, move):
@@ -203,6 +200,7 @@ class HorseHoldRaveSearchNode():
         self.move = move
         self.visit_count = 0
         self._moves_to_try = None
+        self._move_policy = None
         self.score = 0.0
         self._n_sims_with_move = 0
         self._move_win_count = 0.0
@@ -246,8 +244,11 @@ class HorseHoldRaveSearchNode():
         possible_moves = set()
         current_rollout_state = self.state
         while not current_rollout_state.gameOver:
-            possible_moves = get_simulation_moves(current_rollout_state)
-            action = self.simulation_move_policy(possible_moves)
+            possible_moves = get_weighted_moves(current_rollout_state)
+            if possible_moves[1]:
+                action = self.simulation_move_policy(possible_moves)
+            else:
+                action = possible_moves[0][0]
             current_rollout_state = makeMove(current_rollout_state, action)
         return current_rollout_state.winner, possible_moves
 
@@ -288,7 +289,12 @@ class HorseHoldRaveSearchNode():
 
     @staticmethod
     def simulation_move_policy(possible_moves):
-        return possible_moves[np.random.randint(len(possible_moves))]
+        """
+        This policy is based on the premise that moves to higher value squares (as defined by the piece-square tables)
+        should have a higher likelihood to be chosen in the simulations.
+        :return:
+        """
+        return random.choices(possible_moves[0], weights=possible_moves[1], k=1)[0]
 
 
 def time_out():
@@ -302,17 +308,11 @@ class HorseHoldSearchTree:
 
     def best_action(self, num_simulations=2000, queue=None):
         # TODO: store results in queue so that the search can be parallelized
-        for _ in range(0, 400):
+        for _ in range(0, num_simulations):
             c = self.expansion()
             points = c.run_simulation()
             c.backpropagate(points)
-
-        best = self.root.best_child(exploration_c=0)
-        for _ in range(401, num_simulations):
-            c = self.expansion()
-            points = c.run_simulation()
-            c.backpropagate(points)
-            if _ % 100 == 0:
+            if _ % 200 == 0:
                 best = self.root.best_child(exploration_c=0)
             if _ % 20 == 0 and time_out():
                 #print("HoldHorsesRave TimeOut at simulation :", _)
@@ -397,14 +397,22 @@ def initPlayer(_startState, _timeLimit, _victoryPoints, _moveLimit, _assignedPla
                 knight_distance[(x, y, 1)] = knight_dist(x, y, p1_apple_loc[0], p1_apple_loc[1])
                 knight_distance[(x, y, -1)] = knight_dist(x, y, p2_apple_loc[0], p2_apple_loc[1])
 
-    piece_square_table_policy = np.array([[0, 1.61803399,  8.09016994,  3.23606798,  6.47213595,  0.],
+    p1_piece_square_table_policy = np.array([[0, 1.61803399,  8.09016994,  3.23606798,  6.47213595,  0.],
                                           [1.61803399,  4.85410197,  8.09016994,  9.70820393,  3.23606798,  3.23606798],
                                           [8.09016994,  8.09016994,  8.09016994, 11.32623792,  9.70820393,  8.09016994],
                                           [3.23606798,  9.70820393, 11.32623792, 11.32623792,  9.70820393,  4.85410197],
                                           [8.09016994,  9.70820393, 11.32623792,  6.47213595, 14.5623059,  8.09016994],
                                           [1.61803399,  4.85410197, 9.70820393,   14.5623059,   3.23606798,  3.23606798],
                                           [1.61803399,  6.47213595,  4.85410197,  8.09016994,  3.23606798,  0.]])
-    tile_value = {0: piece_square_table_policy}
+    p2_piece_square_table_policy = np.array([[ 0.,          3.23606798,  8.09016994,  4.85410197,  6.47213595,  1.61803399],
+                                             [ 3.23606798,  3.23606798, 14.5623059,   9.70820393,  4.85410197,  1.61803399],
+                                             [ 8.09016994, 14.5623059,   6.47213595, 11.32623792,  9.70820393,  8.09016994],
+                                             [ 4.85410197,  9.70820393, 11.32623792, 11.32623792,  9.70820393,  3.23606798],
+                                             [ 8.09016994,  9.70820393, 11.32623792,  8.09016994,  8.09016994,  8.09016994],
+                                             [ 3.23606798,  3.23606798,  9.70820393,  8.09016994,  4.85410197,  1.61803399],
+                                             [ 0.,          6.47213595,  3.23606798,  8.09016994,  1.61803399,  0.        ]])
+    tile_value = {1: p1_piece_square_table_policy, -1: p2_piece_square_table_policy}
+
 
 
 def exitPlayer():
