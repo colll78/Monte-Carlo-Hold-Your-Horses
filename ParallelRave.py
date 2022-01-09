@@ -123,9 +123,49 @@ def get_weighted_moves(state):
     return moves
 
 
+# def get_simulation_moves(state):
+#     moves = getMoveOptions(state)
+#     remove_guard = True
+#     filtered_moves = []
+#     atk_moves = []
+#     for x in moves:
+#         if state.board[x[2], x[3]] == state.playerToMove * -2:
+#             return [x]
+#         elif (x[2], x[3]) in mating_squares[-state.playerToMove]:
+#             if all(state.board[square] != -1 * state.playerToMove for square in mating_squares[state.playerToMove]):
+#                 atk_def = attackers_defenders(state, x[2], x[3])
+#                 if atk_def >= 0:
+#                     return [x]
+#                 # elif remove_guard and atk_def == -1:
+#                 #     remove_guard = False
+#                 #     for tile in guard_tiles[-state.playerToMove]:
+#                 #         if state.board[tile[0], tile[1]] == -state.playerToMove:
+#                 #             for rtile in reachable[(tile[0], tile[1])]:
+#                 #                 if state.board[rtile[0], rtile[1]] == state.playerToMove:
+#                 #                     # print(state.board)
+#                 #                     # print((rtile[0], rtile[1], tile[0], tile[1]))
+#                 #                     return [(rtile[0], rtile[1], tile[0], tile[1])]
+#         elif (x[2], x[3]) in mating_squares[state.playerToMove] and state.board[x[2], x[3]] == -state.playerToMove:
+#             return [x]
+#         # elif (x[0], x[1]) in guard_tiles[state.playerToMove]:
+#         #     for tile in mating_squares[state.playerToMove]:
+#         #         atk_def = attackers_defenders(state, tile[0], tile[1])
+#         #         if atk_def <= -1:
+#         #             continue
+#         # if attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
+#         #     filtered_moves.append(x)
+#         if state.board[x[2], x[3]] == -state.playerToMove or attackers_defenders(state, x[2], x[3]) >= 0:
+#             filtered_moves.append(x)
+#         # elif attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
+#         #     atk_moves.append(x)
+#     # if not filtered_moves:
+#     #     print("NO GOOD MOVES")
+#     #     print(moves)
+#     #     print(state.board)
+#     return filtered_moves or moves
+
 def get_simulation_moves(state):
     moves = getMoveOptions(state)
-    remove_guard = True
     filtered_moves = []
     atk_moves = []
     for x in moves:
@@ -133,52 +173,21 @@ def get_simulation_moves(state):
             return [x]
         elif (x[2], x[3]) in mating_squares[-state.playerToMove]:
             if all(state.board[square] != -1 * state.playerToMove for square in mating_squares[state.playerToMove]):
-                atk_def = attackers_defenders(state, x[2], x[3])
-                if atk_def >= 0:
+                if attackers_defenders(state, x[2], x[3]) >= 0:
                     return [x]
-                # elif remove_guard and atk_def == -1:
-                #     remove_guard = False
-                #     for tile in guard_tiles[-state.playerToMove]:
-                #         if state.board[tile[0], tile[1]] == -state.playerToMove:
-                #             for rtile in reachable[(tile[0], tile[1])]:
-                #                 if state.board[rtile[0], rtile[1]] == state.playerToMove:
-                #                     # print(state.board)
-                #                     # print((rtile[0], rtile[1], tile[0], tile[1]))
-                #                     return [(rtile[0], rtile[1], tile[0], tile[1])]
         elif (x[2], x[3]) in mating_squares[state.playerToMove] and state.board[x[2], x[3]] == -state.playerToMove:
             return [x]
-        # elif (x[0], x[1]) in guard_tiles[state.playerToMove]:
-        #     for tile in mating_squares[state.playerToMove]:
-        #         atk_def = attackers_defenders(state, tile[0], tile[1])
-        #         if atk_def <= -1:
-        #             continue
         # if attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
         #     filtered_moves.append(x)
-        if state.board[x[2], x[3]] == -state.playerToMove or attackers_defenders(state, x[2], x[3]) >= 0:
+        if state.board[x[2], x[3]] == -state.playerToMove and attackers_defenders(state, x[2], x[3]) >= 0:
             filtered_moves.append(x)
-        # elif attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
-        #     atk_moves.append(x)
+        elif attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
+            atk_moves.append(x)
     # if not filtered_moves:
     #     print("NO GOOD MOVES")
     #     print(moves)
     #     print(state.board)
-    return filtered_moves or moves
-
-
-# def get_simulation_moves(state):
-#     moves = getMoveOptions(state)
-#     filtered_moves = []
-#     for x in moves:
-#         if state.board[x[2], x[3]] == state.playerToMove * -2:
-#             return [x]
-#         if (x[2], x[3]) in mating_squares[-state.playerToMove]:
-#             if all(state.board[square] != -1 * state.playerToMove for square in mating_squares[state.playerToMove]):
-#                 if attackers_defenders(state, x[2], x[3]) >= 0:
-#                     return [x]
-#         if attackers_defenders(state, x[2], x[3]) >= 0 or state.board[x[2], x[3]] == -state.playerToMove:
-#             filtered_moves.append(x)
-#     return filtered_moves or moves
-
+    return filtered_moves or atk_moves or moves
 
 def makeMove(state, move):
     (xStart, yStart, xEnd, yEnd) = move
@@ -616,36 +625,11 @@ def multi_thread_best_action(state, num_simulations=2000, queue=None):
     return consolidate(futures)
 
 
-    # # print(children)
-    # # print("Num children: ", len(children))
-    # start = timer()
-    # startTime = datetime.now()
-    # exec = concurrent.futures.ProcessPoolExecutor(12)
-    # futures = [exec.submit(maux, x, startTime) for x in hhst]
-    # results = concurrent.futures.wait(futures)
-    # futures = [x.result() for x in results[0]]
-    # weights = np.array(futures).sum(axis=0)
-    # end = timer()
-    # #print("Time taken: ", (end-start))
-    # print("Best Score: ", max(weights)/len(hhst))
-    # if (max(weights)/len(hhst) > 0.90):
-    #     with open("game_file.txt", "w+") as game_file:
-    #         game_file.write(str(state.board))
-    #         game_file.write("\n")
-    #
-    # return children[np.argmax(weights)]
 
 
 def getMove(state):
     global startTime
     startTime = datetime.now()
-    queue = qu.Queue()
-    # with concurrent.futures.ProcessPoolExecutor(2) as executor:
-    #     root = HorseHoldRaveSearchNode(state=state, parent=None)
-    #     hhst = HorseHoldSearchTree(root)
-    #     futures = [executor.submit(hhst.best_action) for i in range(0, 2)]
-    #     concurrent.futures.wait(futures)
-    #     print(futures)
     best_node = multi_thread_best_action(state, 2000)
     #print(best_node.state.board)
     # with open("game_file.txt", "w+") as game_file:

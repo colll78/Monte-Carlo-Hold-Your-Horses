@@ -444,7 +444,9 @@ if __name__ == "__main__":
 
     # Names of player files (without '.py' extension).
     #                         0                 1                  2            3              4                5               6               7                    8                    9                        10                      11                 12                 13             14
-    playerModuleList = ['Knight_Rider', 'HorseHoldZeroTree', 'Brain_Fog', 'philip_bot', 'one_horse_bot', 'RaveHoldHorses', "Dark_Knight", "HoldHorsesRave", "obfuscated_knight", "HoldHorsesRaveV2", "HoldHorsesRaveV2Depricated", "HoldHorseZeroV2", "SuperDepricated", "ParallelRave", "HoldHorseZeroV3"]
+    #playerModuleList = ['Knight_Rider', 'HorseHoldZeroTree', 'Brain_Fog', 'philip_bot', 'one_horse_bot', 'RaveHoldHorses', "Dark_Knight", "HoldHorsesRave", "obfuscated_knight", "HoldHorsesRaveV2", "HoldHorsesRaveV2Depricated", "HoldHorseZeroV2", "SuperDepricated", "ParallelRave", "HoldHorseZeroV3"]
+    playerModuleList = ["Dark_Knight", "ParallelRave", "HoldHorseZeroV3"]
+
     name_to_ind = {name: i for i, name in enumerate(playerModuleList)}
 
     players = []  # Import player modules
@@ -462,20 +464,18 @@ if __name__ == "__main__":
     # computerTournament([7, 5])
     # computerTournament([7, 5])
     #computerTournament([10, 9, 9, 9])
-    knight_rider = name_to_ind.get("Knight_Rider")
-    hold_horse_zero_v2 = name_to_ind.get("HoldHorseZeroV2")
-    hold_horse_rave = name_to_ind.get("HoldHorsesRave")
+    #knight_rider = name_to_ind.get("Knight_Rider")
+    #hold_horse_zero_v2 = name_to_ind.get("HoldHorseZeroV2")
+    #hold_horse_rave = name_to_ind.get("HoldHorsesRave")
     dark_knight = name_to_ind.get("Dark_Knight")
-    rave_v2_depricated = name_to_ind.get("HoldHorsesRaveV2Depricated")
-    super_depricated = name_to_ind.get("SuperDepricated")
+    #rave_v2_depricated = name_to_ind.get("HoldHorsesRaveV2Depricated")
     parallel_rave = name_to_ind.get("ParallelRave")
-    one_horse_bot = name_to_ind.get("one_horse_bot")
     hold_horses_zero_v3 = name_to_ind.get("HoldHorseZeroV3")
     #computerTournament([parallel_rave, hold_horse_rave, hold_horse_rave])
-    #computerTournament([parallel_rave, dark_knight, parallel_rave, dark_knight, parallel_rave, dark_knight, parallel_rave, dark_knight])
+    computerTournament([parallel_rave, dark_knight, parallel_rave, dark_knight, parallel_rave, dark_knight, parallel_rave, dark_knight])
     #computerTournament([dark_knight, hold_horses_zero_v3, dark_knight, hold_horses_zero_v3])
     #computerTournament([dark_knight, one_horse_bot, dark_knight, one_horse_bot])
-    computerTournament([dark_knight, hold_horse_rave, dark_knight, hold_horse_rave])
+    #computerTournament([dark_knight, hold_horse_rave, dark_knight, hold_horse_rave])
     #computerTournament([hold_horse_rave, hold_horses_zero_v3, hold_horse_rave, hold_horses_zero_v3])
     #computerTournament([hold_horse_rave, dark_knight, hold_horse_zero_v2])  #, dark_knight, hold_horse_rave, hold_horse_rave, dark_knight, hold_horse_rave])
     #computerTournament([dark_knight, hold_horse_zero_v2, dark_knight, hold_horse_zero_v2, dark_knight, hold_horse_zero_v2, dark_knight, hold_horse_zero_v2])
