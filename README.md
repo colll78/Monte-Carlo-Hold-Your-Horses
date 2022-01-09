@@ -3,7 +3,7 @@ A Monte Carlo Search Tree utilizing Rapid Action Value Estimation to play the ga
 
 Parallel Rave (ParallelRave.py) is generally the strongest implementation and has the highest winrate.
 
-In circumstances where concurrency is not allowed, HoldHorsesZeroV2 is the strongest. 
+In circumstances where concurrency is not allowed, HoldHorsesZeroV2/HoldHorsesRave are the strongest. 
 
 This won 1st place in the annual AI/ML game playing algorithms tournament at University of Massachusetts Boston.
 
