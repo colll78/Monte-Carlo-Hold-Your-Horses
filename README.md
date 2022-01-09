@@ -6,4 +6,6 @@ Parallel Rave (ParallelRave.py) is generally the strongest implementation and ha
 In circumstances where concurrency is not allowed, HoldHorsesZeroV2 is the strongest. 
 
 Example game:
+
+
 <img src="holdhorsezero.gif" width="50%" height="50%"/>
