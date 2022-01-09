@@ -5,6 +5,8 @@ Parallel Rave (ParallelRave.py) is generally the strongest implementation and ha
 
 In circumstances where concurrency is not allowed, HoldHorsesZeroV2 is the strongest. 
 
+This won 1st place in the annual AI/ML game playing algorithms tournament at University of Massachusetts Boston.
+
 Example game:
 
 
