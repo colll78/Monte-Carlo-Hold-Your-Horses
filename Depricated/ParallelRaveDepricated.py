@@ -16,12 +16,8 @@ knight_rider, it is no-where near the playing strength of this program. In an 10
 beat dark_knight in 80 out of 120 (66.67%) of matches.
 
 Future improvements I hope to include are:
-root node parallelization
+leaf node parallelization
 use of transposition table
-
-UPDATE:
-I have implemented root node parallelization without the need for locks or any other bottle-necks, the number of
-simulations ran is therefore doubled for each new process.
 """
 
 from collections import defaultdict
@@ -63,7 +59,6 @@ knight_distance = {}
 tile_value = {}
 executor = None
 guard_tiles = {1: {(3, 1), (0, 2), (3, 3), (4, 0), (1, 3), (2, 0), (2, 4), (0, 4), (4, 2)}, -1: {(3, 2), (4, 1), (2, 3), (6, 1), (4, 5), (2, 5), (6, 3), (3, 4), (5, 2)}}
-
 
 class GameState(object):
     __slots__ = ['board', 'playerToMove', 'gameOver', 'movesRemaining', 'points', 'winner', 'curr_move']
@@ -206,9 +201,9 @@ def makeMove(state, move):
 
 
 # wiki says sqrt(2) is theoretical best, but research shows higher performance engines benefit from lower value
-exploration_constant = .25
-rave_constant = 0.001
-#rave_constant = 0.2
+exploration_constant = .05
+#rave_constant = 1
+rave_constant = 0.2
 result_rewards = {0: 0.002, 1: 1, -1: 0}
 
 
@@ -290,9 +285,6 @@ class HorseHoldRaveSearchNode():
                     child._n_sims_with_move += 1
             self.parent.backpropagate(simulation_result)
 
-    def get_consolidation_data(self):
-        return self.children, self.num_visits
-
     def get_child_weights(self, exploration_c=exploration_constant):
         def decaying_weight(child_node):
             return child_node.num_simulations_containing_move / (child_node.num_visits + child_node.num_simulations_containing_move + 4 * rave_constant ** 2 * child_node.num_visits * child_node.num_simulations_containing_move)
@@ -338,7 +330,7 @@ def time_out():
 
 
 def time_out_close():
-    duration = datetime.now() - (startTime - timedelta(milliseconds=200))
+    duration = datetime.now() - (startTime - timedelta(milliseconds=50))
     return duration.seconds + duration.microseconds * 1e-6 >= timeLimit
 
 
@@ -366,13 +358,6 @@ class HorseHoldSearchTree:
         #print("Number of simulations: ", i)
         weights = self.root.get_child_weights(exploration_c=0)
         return weights
-
-    def multi_threaded_consolidate(self):
-        while not time_out_close():
-            c = self.expansion()
-            points = c.run_simulation()
-            c.backpropagate(points)
-        return self.root.get_consolidation_data()
 
     def best_action(self, num_simulations=2000, queue=None):
         # TODO: store results in queue so that the search can be parallelize
@@ -520,60 +505,7 @@ def maux(hhst, time=None):
     return hhst.multi_threaded_best_action(2000)
 
 
-def compute_tree_data(hhst, time=None):
-    global startTime
-    startTime = time
-    return hhst.multi_threaded_consolidate()
-
 from timeit import default_timer as timer
-
-
-def merge_nodes(node_0, node):
-    node_0.visit_count += node.visit_count
-    node_0.score += node.score
-    node_0._n_sims_with_move += node._n_sims_with_move
-    node_0._move_win_count += node._move_win_count
-
-
-def consolidate(futures):
-    def decaying_weight(child_node):
-        return child_node.num_simulations_containing_move / (
-                child_node.num_visits + child_node.num_simulations_containing_move + 4 * rave_constant ** 2 * child_node.num_visits * child_node.num_simulations_containing_move)
-
-    children_l = []
-    visits_l = []
-    for args in futures:
-        children_l.append(args[0])
-        visits_l.append(args[1])
-
-    num_child = len(children_l[0])
-    children_same = [[children[i] for children in children_l] for i in range(0, num_child)]
-
-    merged_children = []
-    visits_l = sum(visits_l)
-
-    for children in children_same:
-        child = children.pop()
-        while children:
-            merge_nodes(child, children.pop())
-        merged_children.append(child)
-
-    choices_weights = []
-    for c in merged_children:
-        decaying_w = decaying_weight(c)
-        if decaying_w:
-            weight = (1 - decaying_w) * (c.node_score / c.num_visits) + decaying_w * (
-                    c.move_win_count / c.num_simulations_containing_move) + exploration_constant * np.sqrt(
-                (2 * np.log(visits_l) / c.num_visits))
-        else:
-            weight = c.node_score / c.num_visits + exploration_constant * np.sqrt(
-                (2 * np.log(visits_l) / c.num_visits))
-        choices_weights.append(weight)
-
-    print(max(choices_weights))
-    return merged_children[np.argmax(choices_weights)]
-
-
 
 
 def multi_thread_best_action(state, num_simulations=2000, queue=None):
@@ -605,35 +537,24 @@ def multi_thread_best_action(state, num_simulations=2000, queue=None):
         next_state = makeMove(state, move)
         children.append(HorseHoldRaveSearchNode(next_state, parent=None, move=move))
 
+    # print(children)
+    # print("Num children: ", len(children))
+    start = timer()
+    startTime = datetime.now()
     exec = concurrent.futures.ProcessPoolExecutor(12)
-    futures = [exec.submit(compute_tree_data, x, startTime) for x in hhst]
+    futures = [exec.submit(maux, x, startTime) for x in hhst]
     results = concurrent.futures.wait(futures)
     futures = [x.result() for x in results[0]]
-    # with open("game_file.txt", "w+") as game_file:
-    #         game_file.write(str(state.board))
-    #         game_file.write("\n")
+    weights = np.array(futures).sum(axis=0)
+    end = timer()
+    #print("Time taken: ", (end-start))
+    print("Best Score: ", max(weights)/len(hhst))
+    if (max(weights)/len(hhst) > 0.90):
+        with open("game_file.txt", "w+") as game_file:
+            game_file.write(str(state.board))
+            game_file.write("\n")
 
-    return consolidate(futures)
-
-
-    # # print(children)
-    # # print("Num children: ", len(children))
-    # start = timer()
-    # startTime = datetime.now()
-    # exec = concurrent.futures.ProcessPoolExecutor(12)
-    # futures = [exec.submit(maux, x, startTime) for x in hhst]
-    # results = concurrent.futures.wait(futures)
-    # futures = [x.result() for x in results[0]]
-    # weights = np.array(futures).sum(axis=0)
-    # end = timer()
-    # #print("Time taken: ", (end-start))
-    # print("Best Score: ", max(weights)/len(hhst))
-    # if (max(weights)/len(hhst) > 0.90):
-    #     with open("game_file.txt", "w+") as game_file:
-    #         game_file.write(str(state.board))
-    #         game_file.write("\n")
-    #
-    # return children[np.argmax(weights)]
+    return children[np.argmax(weights)]
 
 
 def getMove(state):
